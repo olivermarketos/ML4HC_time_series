@@ -1,0 +1,4 @@
+- distribution of variables individually
+- ave number measurements of variables and when taken
+- how many samples taken within an hour
+- spread of measurements through time 

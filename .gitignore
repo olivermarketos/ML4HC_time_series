@@ -1,1 +1,6 @@
 *.pdf
+.DS_Store
+data/*
+.python-version
+uv.lock
+pyproject.toml
