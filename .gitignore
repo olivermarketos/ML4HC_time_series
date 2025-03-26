@@ -4,3 +4,4 @@ data/*
 .python-version
 uv.lock
 pyproject.toml
+__pycache__/

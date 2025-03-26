@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import os
+import tqdm as tqdm
 
 STATIC_VARS = ["Age","Gender","Height","ICUType", "Weight"]
 
@@ -87,7 +88,8 @@ def aggregate_duplicates(df):
         df (Dataframe): dataframe with columns ['RecordID', 'Parameter', 'Time', 'Value'] with aggregated values for duplicate rows.
     """
     aggregated_rows = []
-    for key, values in df.groupby(['RecordID', 'Parameter', 'Time'])['Value']:
+
+    for key, values in tqdm.tqdm(df.groupby(['RecordID', 'Parameter', 'Time'])['Value'], desc="Aggregating duplicates"):
         values = values.reset_index(drop=True)
         record_id, param, time = (key)
 
@@ -208,15 +210,37 @@ def process_timeseries_vars(df):
     return df
 
 def convert_time(df):
+    """
+    Convert the time to hours, rounded up to nearest hour and fill in dataframe with missing hours"
+    """
     df['Time'] = df['Time'].map(lambda x: int(x.split(':')[0])*60 + int(x.split(':')[1])) # convert time to minutes
     df["Time"] = np.ceil(df["Time"] / 60) # round up to the nearest hour
+
+    df['Time'] = df['Time'].astype(int)
+
     return df
 
 def aggregate_hourly_measurements(df, variables):
     agg_dict = {col: 'mean' for col in variables if col != 'Urine'}
     agg_dict['Urine'] = 'sum'
-    merged_df = df.groupby(['RecordID', 'Time'], as_index=False).agg(agg_dict)
-    return merged_df
+    df = df.groupby(['RecordID', 'Time'], as_index=False).agg(agg_dict)
+
+    # Get unique RecordIDs
+    record_ids = df['RecordID'].unique()
+
+    # Create a full MultiIndex for every RecordID and every hour from 0 to 48
+    full_index = pd.MultiIndex.from_product([record_ids, range(49)], names=['RecordID', 'Time'])
+
+    # Set the index of the DataFrame to RecordID and Time
+    df = df.set_index(['RecordID', 'Time'])
+
+    # Reindex the DataFrame using the complete index
+    df_complete = df.reindex(full_index)
+
+    # If desired, reset the index to turn RecordID and Time back into columns
+    df_complete = df_complete.reset_index()
+
+    return df_complete
 
 def main():
     # Load the data
@@ -229,23 +253,24 @@ def main():
         print("Original DataFrame:")
         print(df,"\n")
 
-        print("Try pivoting the original DataFrame:")
-        try:
-            test = df.pivot(index="RecordID", columns="Parameter", values="Value")
-            print(test)
-        except ValueError as e:
-            print("Dataframe contains duplicates with more than 2 rows.")
-            print("Error:", e, "\n")
+        # print("Try pivoting the original DataFrame:")
+        # try:
+        #     test = df.pivot(index="RecordID", columns="Parameter", values="Value")
+        #     print(test)
+        # except ValueError as e:
+        #     print("Dataframe contains duplicates with more than 2 rows.")
+        #     print("Error:", e, "\n")
 
-        print("Aggregating data...")
         df = aggregate_duplicates(df)
         print("Aggregated DataFrame:")
         print(df,"\n")
 
         df = pivot(df)
         print("Pivoted DataFrame:")
-        print(df)
+        print(df, "\n")
 
+        df = convert_time(df)
+        df = aggregate_hourly_measurements(df, STATIC_VARS+TIMESERIES_VARS)
         df = propagate_static_vars(df)
 
         if set_path != "data/set-c":  # process outliers therefore skip for test set
@@ -253,12 +278,13 @@ def main():
 
             df = process_timeseries_vars(df)
 
-        df = convert_time(df)
+       
+        print("Final df shape: ", df.shape, "\n")
 
-        df = aggregate_hourly_measurements(df, STATIC_VARS+TIMESERIES_VARS)
-        print("Saving the processed data...")
+        print("Saving the processed data...\n")
+
 
         set_name = set_path.split("/")[-1]
-        df.to_parquet(f"data/processed_raw_data_{set_name}.parquet", engine="pyarrow")
+        df.to_parquet(f"data/processed_raw_data_{set_name}_1.parquet", engine="pyarrow")
 if __name__ == "__main__":
     main()
