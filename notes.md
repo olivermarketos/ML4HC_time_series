@@ -76,3 +76,46 @@ This exploration plan leverages descriptive statistics and visualizations to unc
 - **Outcome-Related Descriptors**: Outcome proportions, stay/survival distributions, and score analyses to frame the prediction task.
 - **Class Balance**: A specific check to anticipate modeling challenges.
 
+
+
+TODO
+
+3 patients in train have no measurements, should be removed
+7 in val
+2 in train
+
+wc -l *.txt \
+  | grep -v total \
+  | awk '
+    NR == 1 {
+      min = $1
+      max = $1
+      minFile = $2
+      maxFile = $2
+    }
+    {
+      # Update min and max
+      if ($1 < min) {
+        min = $1
+        minFile = $2
+      } if($1 <8){print $2}
+      if ($1 > max) {
+        max = $1
+        maxFile = $2
+      }
+      sum += $1
+      count++
+    }
+    END {
+      avg = sum / count
+      print "Min =", min, "in", minFile
+      print "Max =", max, "in", maxFile
+      print "Average =", avg
+    }
+  '
+140501.txt
+140936.txt
+141264.txt
+Min = 7 in 140501.txt
+Max = 1503 in 135365.txt
+Average = 440.495

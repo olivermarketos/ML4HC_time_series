@@ -209,6 +209,11 @@ def process_timeseries_vars(df):
             df.loc[idx, c] = np.nan
     return df
 
+def convert_time_to_minutes(df):
+    df['Time'] = df['Time'].map(lambda x: int(x.split(':')[0])*60 + int(x.split(':')[1])) # convert time to minutes
+    df['Time'] = df['Time'].astype(int)
+
+    return df
 def convert_time(df):
     """
     Convert the time to hours, rounded up to nearest hour and fill in dataframe with missing hours"
