@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 import os
-import tqdm as tqdm
+from tqdm import tqdm
 
 STATIC_VARS = ["Age","Gender","Height","ICUType", "Weight"]
 
@@ -43,8 +43,36 @@ FEATURES = {'Albumin': 'Serum Albumin (g/dL)',
     'WBC': 'White blood cell count (cells/nL)',
     'Weight_VAR': 'Weight (kg)'}
 
-TIMESERIES_VARS = list(FEATURES.keys())
-RECORDID_and_TIME_vars = ["RecordID", "Time"]
+TIMESERIES_VARS = [
+    'Albumin', 'ALP', 'ALT', 'AST', 'Bilirubin', 'BUN', 'Cholesterol',
+    'Creatinine', 'DiasABP', 'FiO2', 'GCS', 'Glucose', 'HCO3', 'HCT',
+    'HR', 'K', 'Lactate', 'Mg', 'MAP', 'MechVent', 'Na', 'NIDiasABP',
+    'NIMAP', 'NISysABP', 'PaCO2', 'PaO2', 'pH', 'Platelets', 'RespRate',
+    'SaO2', 'SysABP', 'Temp', 'TroponinI', 'TroponinT', 'Urine', 'WBC',
+    'Weight_VAR' # Derived feature: Weight as a time-series variable
+]
+ID_TIME_COLS = ["RecordID", "Time"]
+
+COLS_TO_DROP_FROM_FEATURES = ["RecordID", "Time", "ICUType"]
+
+STATIC_FEATURES_FOR_MODEL = ["Age", "Gender", "Height", "Weight"] # Excludes ICUType
+
+# Plausibility Bounds (Grouped for clarity)
+PLAUSIBILITY_BOUNDS = {
+    "Height": (100, 250),
+    "Weight": (20, 300), # Added upper bound assumption
+    "Weight_VAR": (20, 300),
+    "HR": (10, 300), # Added upper bound assumption
+    "pH": (6.0, 8.0),
+    "Temp": (12, 45),
+    "Value_Not_Negative_Or_Zero": ["DiasABP", "MAP", "NIDiasABP", "NIMAP", "NISysABP", "SysABP", "RespRate", "PaO2", "Platelets", "WBC"]
+    # Add others if needed
+}
+
+def safe_mkdirs(path):
+    """Creates directory if it doesn't exist."""
+    if not os.path.exists(path):
+        os.makedirs(path)
 
 
 def load_data_in_df(set_path):
@@ -89,7 +117,7 @@ def aggregate_duplicates(df):
     """
     aggregated_rows = []
 
-    for key, values in tqdm.tqdm(df.groupby(['RecordID', 'Parameter', 'Time'])['Value'], desc="Aggregating duplicates"):
+    for key, values in tqdm(df.groupby(['RecordID', 'Parameter', 'Time'])['Value'], desc="Aggregating duplicates"):
         values = values.reset_index(drop=True)
         record_id, param, time = (key)
 
@@ -142,7 +170,7 @@ def aggregate_duplicates(df):
     
     return pd.DataFrame(aggregated_rows)
 
-def pivot(df):
+def pivot_data(df):
     """Pivot the dataframe to have a time-grid with each parameter as a column.
 
     Args:
@@ -163,7 +191,7 @@ def pivot(df):
 
 def propagate_static_vars(df):
     df[STATIC_VARS] = df.groupby('RecordID')[STATIC_VARS].transform('first') # fill the static variable rows for each patient
-    df  = df[RECORDID_and_TIME_vars+STATIC_VARS + TIMESERIES_VARS] # reaarange the columns
+    df  = df[ID_TIME_COLS+STATIC_VARS + TIMESERIES_VARS] # reaarange the columns
     return df
 
 def process_static_vars(df):
@@ -247,49 +275,99 @@ def aggregate_hourly_measurements(df, variables):
 
     return df_complete
 
-def main():
+def remove_outliers(df):
+    # Remove outliers based on the 1st and 99th percentiles
+    df.loc[(df["Parameter"]=="Gender") & (df["Value"] <0), "Value"] = 1
+
+    df.loc[(df["Parameter"]=="RecordID"), "Value"] = np.nan
+    df.loc[(df["Parameter"]=="Height") & ((df["Value"] <100)| (df["Value"]> 250)), "Value"] = np.nan
+
+    df.loc[(df["Parameter"]=="Weight") & (df["Value"] <20), "Value"] = np.nan
+
+    df.loc[(df["Parameter"]=="HR") & (df["Value"] <10), "Value"] = np.nan
+
+    df.loc[(df["Parameter"]=="pH") & ((df["Value"] <6)| (df["Value"] >8)), "Value"] = np.nan
+
+    df.loc[(df["Parameter"]=="Temp") & ((df["Value"] <12)| (df["Value"] >45)), "Value"] = np.nan
+
+    cols_to_check = ["DiasABP", "MAP", "NIDiasABP", "NIMAP", "NISysABP", "SysABP", "RespRate", "PaO2"]
+
+    df.loc[(df['Parameter'].isin(cols_to_check)) & (df['Value'] <= 0), 'Value'] = np.nan
+
+    df.loc[(df['Parameter']=="ICUType"), 'Value'] = np.nan
+    df["RecordID"] = df["RecordID"].astype(int)
+
+    return df
+
+def process_to_time_grid(df):
+    df = pivot_data(df)
+    print(f"Pivoted DataFrame {df.shape}:")
+    print(df, "\n")
+
+    df = convert_time(df)
+    df = aggregate_hourly_measurements(df, STATIC_VARS+TIMESERIES_VARS)
+    df = propagate_static_vars(df)
+
+    # if set_path != "data/set-c":  # process outliers therefore skip for test set
+    df = process_static_vars(df)
+
+    df = process_timeseries_vars(df)
+    return df
+
+def process_to_time_tuple(df):
+
+    df = remove_outliers(df)
+    df = convert_time_to_minutes(df)
+
+    df = df.dropna(subset=["Value"])
+    print(f"size of df after removing NaN and outliers: {df.shape} \n")
+
+    # sort values by time and patient_id
+    df = df.sort_values(by=["RecordID", "Time"])
+    df = df.reset_index(drop=True)
+    return df
+
+
+    
+def main(format = "time_grid"):
     # Load the data
 
     set_paths = ["data/set-a", "data/set-b", "data/set-c"]
-
+    
     for set_path in set_paths:
+
+        set_name = set_path.split("/")[-1]
         print(f"Processing data in {set_path}")
+
         df = load_data_in_df(set_path)
         print("Original DataFrame:")
         print(df,"\n")
 
-        # print("Try pivoting the original DataFrame:")
-        # try:
-        #     test = df.pivot(index="RecordID", columns="Parameter", values="Value")
-        #     print(test)
-        # except ValueError as e:
-        #     print("Dataframe contains duplicates with more than 2 rows.")
-        #     print("Error:", e, "\n")
-
+    
         df = aggregate_duplicates(df)
         print("Aggregated DataFrame:")
         print(df,"\n")
 
-        df = pivot(df)
-        print("Pivoted DataFrame:")
-        print(df, "\n")
 
-        df = convert_time(df)
-        df = aggregate_hourly_measurements(df, STATIC_VARS+TIMESERIES_VARS)
-        df = propagate_static_vars(df)
+        if format == "time_grid":
+            df = process_to_time_grid(df)
+            print("Final df shape: ", df.shape, "\n")
+            print(df, "\n")
+            print(f"Saving the processed data to data/time_grid_processed_raw_sparse_data_{set_name}.parquet \n")
+            df.to_parquet(f"data/time_grid_processed_raw_sparse_data_{set_name}.parquet", engine="pyarrow")
 
-        if set_path != "data/set-c":  # process outliers therefore skip for test set
-            df = process_static_vars(df)
+            
+        elif format == "time_tuple":
 
-            df = process_timeseries_vars(df)
-
-       
-        print("Final df shape: ", df.shape, "\n")
-
-        print("Saving the processed data...\n")
+            print(f"size of {set_name}: {df.shape}")
+            df = process_to_time_tuple(df)
+            print(f"Saving the processed data to data/tuple_processed_raw_{set_name}.parquet \n")
+            df.to_parquet(f"data/tuple_processed_raw_{set_name}.parquet", index=False)
 
 
-        set_name = set_path.split("/")[-1]
-        df.to_parquet(f"data/processed_raw_data_{set_name}_1.parquet", engine="pyarrow")
+
 if __name__ == "__main__":
-    main()
+    
+    format = "time_grid" 
+    # format = "time_tuple"
+    main(format= format)
