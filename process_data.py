@@ -51,6 +51,7 @@ TIMESERIES_VARS = [
     'SaO2', 'SysABP', 'Temp', 'TroponinI', 'TroponinT', 'Urine', 'WBC',
     'Weight_VAR' # Derived feature: Weight as a time-series variable
 ]
+
 ID_TIME_COLS = ["RecordID", "Time"]
 
 COLS_TO_DROP_FROM_FEATURES = ["RecordID", "Time", "ICUType"]
