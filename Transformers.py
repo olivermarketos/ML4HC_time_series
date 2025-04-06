@@ -169,6 +169,22 @@ class PositionalEncodingTimeGrid(nn.Module):
         x = x + self.pe[:, :x.size(1)].to(x.device)
         return self.dropout(x)
 
+class ContinuousTimeEncoding(nn.Module):
+    def __init__(self, d_model):
+        super().__init__()
+        self.d_model = d_model
+
+    def forward(self, t):
+        # t: (batch_size, seq_len) with values scaled between 0 and 1
+        device = t.device
+        div_term = torch.exp(
+            torch.arange(0, self.d_model, 2, device=device) * (-np.log(10000.0) / self.d_model)
+        )
+        t_unsqueezed = t.unsqueeze(-1)  # shape: (B, S, 1)
+        pe = torch.zeros(t.shape[0], t.shape[1], self.d_model, device=device)
+        pe[..., 0::2] = torch.sin(t_unsqueezed * div_term)
+        pe[..., 1::2] = torch.cos(t_unsqueezed * div_term)
+        return pe
 # class PositionalEncodingTuple(nn.Module):
 #     """Standard sinusoidal positional encoding."""
 #     def __init__(self, d_model, dropout=0.1, max_len=5000):
@@ -232,12 +248,12 @@ class TimeSeriesTupleTransformer(nn.Module):
 
 
         self.cls_token = nn.Parameter(torch.randn(1, 1, d_model))  # Class token for classification
-
-        # Input embeddings
         self.modality_embedding = nn.Embedding(num_modalities, self.modality_emb_dim, padding_idx=PAD_INDEX_Z)
 
         combined_input_dim = 1 + 1 + self.modality_emb_dim 
         self.input_proj = nn.Linear(combined_input_dim, d_model)
+
+        self.time_encoding = ContinuousTimeEncoding(d_model)
 
         encoder_layer = nn.TransformerEncoderLayer(d_model, nhead, dim_feedforward, dropout, batch_first=True)
         self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_encoder_layers)
@@ -257,7 +273,9 @@ class TimeSeriesTupleTransformer(nn.Module):
         combined_inputs = torch.cat([t_feat, v_feat, mod_embed], dim=-1)  # (B, S, 1+1+modality_emb_dim)
         projected_emb = self.input_proj(combined_inputs)                  # (B, S, d_model)
        
+        time_emb = self.time_encoding(t_seq)  # (B, S, d_model)
 
+        x = projected_emb + time_emb  # (B, S, d_model)
 
         batch_size = projected_emb.size(0)
         cls_token = self.cls_token.expand(batch_size, -1, -1)             # (B, 1, d_model)
