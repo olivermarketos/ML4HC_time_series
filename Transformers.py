@@ -185,27 +185,29 @@ class ContinuousTimeEncoding(nn.Module):
         pe[..., 0::2] = torch.sin(t_unsqueezed * div_term)
         pe[..., 1::2] = torch.cos(t_unsqueezed * div_term)
         return pe
-# class PositionalEncodingTuple(nn.Module):
-#     """Standard sinusoidal positional encoding."""
-#     def __init__(self, d_model, dropout=0.1, max_len=5000):
-#         super().__init__()
-#         self.dropout = nn.Dropout(p=dropout)
+    
+class PositionalEncodingTuple(nn.Module):
+    """Standard sinusoidal positional encoding."""
+    def __init__(self, d_model, dropout=0.1, max_len=5000):
+        super().__init__()
+        self.dropout = nn.Dropout(p=dropout)
 
-#         position = torch.arange(max_len).unsqueeze(1)
-#         div_term = torch.exp(torch.arange(0, d_model, 2) * (-torch.log(torch.tensor(10000.0)) / d_model))
-#         pe = torch.zeros(max_len, 1, d_model)
-#         pe[:, 0, 0::2] = torch.sin(position * div_term)
-#         pe[:, 0, 1::2] = torch.cos(position * div_term)
-#         self.register_buffer('pe', pe)
+        position = torch.arange(max_len).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2) * (-torch.log(torch.tensor(10000.0)) / d_model))
+        pe = torch.zeros(max_len, 1, d_model)
+        pe[:, 0, 0::2] = torch.sin(position * div_term)
+        pe[:, 0, 1::2] = torch.cos(position * div_term)
+        self.register_buffer('pe', pe)
+        self.pe: torch.Tensor
 
-#     def forward(self, x):
-#         """
-#         Args:
-#             x: Tensor, shape [seq_len, batch_size, embedding_dim]
-#         """
-#         x = x + self.pe[:x.size(0)]
+    def forward(self, x):
+        """
+        Args:
+            x: Tensor, shape [seq_len, batch_size, embedding_dim]
+        """
+        x = x + self.pe[:x.size(0)]
 
-#         return self.dropout(x)
+        return self.dropout(x)
 
 
 class TimeSeriesGridTransformer(nn.Module):
@@ -244,16 +246,16 @@ class TimeSeriesTupleTransformer(nn.Module):
                  dim_feedforward, num_classes, dropout=0.1, max_seq_len=768, modality_emb_dim=64):
         super().__init__()
         self.d_model = d_model
+
         self.modality_emb_dim = modality_emb_dim
 
 
         self.cls_token = nn.Parameter(torch.randn(1, 1, d_model))  # Class token for classification
         self.modality_embedding = nn.Embedding(num_modalities, self.modality_emb_dim, padding_idx=PAD_INDEX_Z)
-
-        combined_input_dim = 1 + 1 + self.modality_emb_dim 
-        self.input_proj = nn.Linear(combined_input_dim, d_model)
+        self.feature_proj = nn.Linear(self.modality_emb_dim, self.d_model)  # 1 for time, modality_emb_dim for modality embedding
 
         self.time_encoding = ContinuousTimeEncoding(d_model)
+        self.pos_encoder = PositionalEncodingTuple(d_model, dropout, max_seq_len)
 
         encoder_layer = nn.TransformerEncoderLayer(d_model, nhead, dim_feedforward, dropout, batch_first=True)
         self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_encoder_layers)
@@ -267,26 +269,42 @@ class TimeSeriesTupleTransformer(nn.Module):
             )
 
     def get_representation(self, t_seq, z_seq, v_seq, src_key_padding_mask):
+
+        # NEW REPRESENTATION
         mod_embed = self.modality_embedding(z_seq)  # (B, S, modality_emb_dim)
-        t_feat = t_seq.unsqueeze(-1)                # (B, S, 1)
-        v_feat = v_seq.unsqueeze(-1)                # (B, S, 1)
-        combined_inputs = torch.cat([t_feat, v_feat, mod_embed], dim=-1)  # (B, S, 1+1+modality_emb_dim)
-        projected_emb = self.input_proj(combined_inputs)                  # (B, S, d_model)
-       
+        v_unsqueezed = v_seq.unsqueeze(-1)                # (B, S, 1)
+        x = mod_embed * v_unsqueezed  # (B, S, 1+modality_emb_dim)
+        x = self.feature_proj(x)  # (B, S, d_model)
         time_emb = self.time_encoding(t_seq)  # (B, S, d_model)
+        x = x + time_emb  # (B, S, d_model)
+        x = self.pos_encoder(x)  # (B, S, d_model)
 
-        x = projected_emb + time_emb  # (B, S, d_model)
+        output = self.transformer_encoder(x, src_key_padding_mask=src_key_padding_mask)  # (B, S, d_model)
+        attn_weights = torch.softmax(torch.mean(output, dim=-1), dim=1).unsqueeze(-1)  # (B, S, 1)
+        pooled = torch.sum(output * attn_weights, dim=1)  # (B, d_model)
+        return pooled
 
-        batch_size = projected_emb.size(0)
-        cls_token = self.cls_token.expand(batch_size, -1, -1)             # (B, 1, d_model)
-        x = torch.cat((cls_token, projected_emb), dim=1)                  # (B, S+1, d_model)
+        # ORIGINAL REPRESENTATION
+        # mod_embed = self.modality_embedding(z_seq)  # (B, S, modality_emb_dim)
+        # t_feat = t_seq.unsqueeze(-1)                # (B, S, 1)
+        # v_feat = v_seq.unsqueeze(-1)                # (B, S, 1)
+        # combined_inputs = torch.cat([t_feat, v_feat, mod_embed], dim=-1)  # (B, S, 1+1+modality_emb_dim)
+        # projected_emb = self.input_proj(combined_inputs)                  # (B, S, d_model)
+       
+        # time_emb = self.time_encoding(t_seq)  # (B, S, d_model)
 
-        cls_mask = torch.zeros(batch_size, 1, dtype=torch.bool, device=src_key_padding_mask.device)
-        src_key_padding_mask = torch.cat([cls_mask, src_key_padding_mask], dim=1)  # (B, 1+S)
+        # x = projected_emb + time_emb  # (B, S, d_model)
 
-        transformer_output = self.transformer_encoder(x, src_key_padding_mask=src_key_padding_mask)  # (B, 1+S, d_model)
-        cls_representation = transformer_output[:, 0, :]  # (B, d_model), output corresponding to CLS token
-        return cls_representation
+        # batch_size = projected_emb.size(0)
+        # cls_token = self.cls_token.expand(batch_size, -1, -1)             # (B, 1, d_model)
+        # x = torch.cat((cls_token, projected_emb), dim=1)                  # (B, S+1, d_model)
+
+        # cls_mask = torch.zeros(batch_size, 1, dtype=torch.bool, device=src_key_padding_mask.device)
+        # src_key_padding_mask = torch.cat([cls_mask, src_key_padding_mask], dim=1)  # (B, 1+S)
+
+        # transformer_output = self.transformer_encoder(x, src_key_padding_mask=src_key_padding_mask)  # (B, 1+S, d_model)
+        # cls_representation = transformer_output[:, 0, :]  # (B, d_model), output corresponding to CLS token
+        # return cls_representation
 
 
         final_emb = projected_emb # renamed for clarity
