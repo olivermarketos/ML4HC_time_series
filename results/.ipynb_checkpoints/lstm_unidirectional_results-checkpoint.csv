@@ -1,0 +1,2 @@
+loss,accuracy,auROC,auPRC
+"tensor(1.2237, device='mps:0')",0.14625,0.5,0.14625
