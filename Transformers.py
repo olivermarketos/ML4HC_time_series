@@ -243,8 +243,12 @@ class TimeSeriesTupleTransformer(nn.Module):
         self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_encoder_layers)
 
         # Classifier head
-        self.classifier = nn.Linear(d_model, num_classes)
-
+        self.classifier = nn.Sequential(
+            nn.Linear(d_model, 64),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(64, 1)
+            )
 
     def get_representation(self, t_seq, z_seq, v_seq, src_key_padding_mask):
         mod_embed = self.modality_embedding(z_seq)  # (B, S, modality_emb_dim)
@@ -253,16 +257,18 @@ class TimeSeriesTupleTransformer(nn.Module):
         combined_inputs = torch.cat([t_feat, v_feat, mod_embed], dim=-1)  # (B, S, 1+1+modality_emb_dim)
         projected_emb = self.input_proj(combined_inputs)                  # (B, S, d_model)
        
-        # batch_size = projected_emb.size(0)
-        # cls_token = self.cls_token.expand(batch_size, -1, -1)             # (B, 1, d_model)
-        # x = torch.cat((cls_token, projected_emb), dim=1)                  # (B, S+1, d_model)
 
-        # cls_mask = torch.zeros(batch_size, 1, dtype=torch.bool, device=src_key_padding_mask.device)
-        # src_key_padding_mask = torch.cat([cls_mask, src_key_padding_mask], dim=1)  # (B, 1+S)
 
-        # transformer_output = self.transformer_encoder(x, src_key_padding_mask=src_key_padding_mask)  # (B, 1+S, d_model)
-        # cls_representation = transformer_output[:, 0, :]  # (B, d_model), output corresponding to CLS token
-        # return cls_representation
+        batch_size = projected_emb.size(0)
+        cls_token = self.cls_token.expand(batch_size, -1, -1)             # (B, 1, d_model)
+        x = torch.cat((cls_token, projected_emb), dim=1)                  # (B, S+1, d_model)
+
+        cls_mask = torch.zeros(batch_size, 1, dtype=torch.bool, device=src_key_padding_mask.device)
+        src_key_padding_mask = torch.cat([cls_mask, src_key_padding_mask], dim=1)  # (B, 1+S)
+
+        transformer_output = self.transformer_encoder(x, src_key_padding_mask=src_key_padding_mask)  # (B, 1+S, d_model)
+        cls_representation = transformer_output[:, 0, :]  # (B, d_model), output corresponding to CLS token
+        return cls_representation
 
 
         final_emb = projected_emb # renamed for clarity

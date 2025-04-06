@@ -23,8 +23,8 @@ grid_feature_dim: 41 # Should match your data
 
 # Tuple Transformer
 tuple_d_model: 128
-tuple_nhead: 8
-tuple_num_encoder_layers: 3
+tuple_nhead: 4
+tuple_num_encoder_layers: 2
 tuple_dim_feedforward: 256 # Typically 2-4x d_model
 tuple_dropout: 0.2
 tuple_num_modalities: 41 # 40 variables + 1 for padding (if PAD_INDEX_Z=0) Adjust if needed!
