@@ -2,6 +2,24 @@
 
 Below we provide an outline of the order to run the different jupyter notebooks, which correspond to the different section laid out in the assignmenet brief.
 
+
+## Initial steps
+
+Clone repo
+`git clone https://github.com/olivermarketos/ML4HC_time_series.git
+cd ML4HC_time_series`
+
+Setup virtual environment
+`python3 -m venv env`
+`source env/bin/activate  # On Windows use: env\Scripts\activate`
+
+or using conda (recommended)
+`conda create --name yourenv python=3.11`
+`conda activate yourenv`
+
+Install requirements
+`pip install -r requirements.txt`
+
 ## Question 1
 
 1.1. 
