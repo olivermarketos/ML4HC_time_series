@@ -363,7 +363,7 @@ class TimeSeriesGridTransformer(nn.Module):
             nn.ReLU(),
             nn.Dropout(dropout),
             nn.Linear(64, 1)
-            )
+            )   
         
     def get_representation(self, x):
         x = self.input_proj(x)
