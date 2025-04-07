@@ -10,7 +10,7 @@ from sklearn.metrics import average_precision_score, roc_auc_score, accuracy_sco
 import csv
 
 
-def convert_df_to_tensors(df):
+def convert_df_to_tensors(df, outcomes):
     """
     Convert a DataFrame of time-series data for multiple patients into a list of PyTorch tensors.
 
@@ -25,12 +25,15 @@ def convert_df_to_tensors(df):
     Parameters:
         df (pd.DataFrame): A pandas DataFrame with rows representing time points and columns 
                            including 'RecordID', 'Time', and feature values.
+        outcomes (pd.DataFrame): A pandas DataFrame with rows representing the outcome of 
+                                 a given patient
 
     Returns:
         List[torch.Tensor]: A list of float tensors, each of shape [num_features, time_steps], 
                             one per unique patient.
     """
     tensors = []
+    targets = []
     
     # Loop over each unique patient ID
     for ID in df['RecordID'].unique():
@@ -44,7 +47,11 @@ def convert_df_to_tensors(df):
         # Convert to float tensor and append to list
         tensors.append(patient_tensor.float())
         
-    return tensors
+        # Creating the target tensor for the given index
+        target = torch.tensor(outcomes.loc[ID].values).float()
+        targets.append(target)
+        
+    return tensors, targets
 
 class LinearProbe(nn.Module):
     """
@@ -238,9 +245,9 @@ def main():
         device = torch.device("cpu")
         
     # Loading the train and validation data sets and their outcomes
-    data_train = pd.read_parquet('./data_processed/set-a.parquet')
-    data_validate = pd.read_parquet('data_processed/set-b.parquet')
-    data_test = pd.read_parquet('./data_processed/set-c.parquet')
+    data_train = pd.read_parquet('./data_processed/raw_data_set-a.parquet').drop('ICUType', axis=1)
+    data_validate = pd.read_parquet('data_processed/raw_data_set-b.parquet').drop('ICUType', axis=1)
+    data_test = pd.read_parquet('./data_processed/raw_data_set-c.parquet').drop('ICUType', axis=1)
 
     outcomes_train = pd.read_csv('./data/Outcomes-a.txt')
     outcomes_train = outcomes_train.loc[:, ['RecordID', 'In-hospital_death']].set_index('RecordID')
@@ -250,20 +257,19 @@ def main():
     outcomes_test = outcomes_test.loc[:, ['RecordID', 'In-hospital_death']].set_index('RecordID')
     
     # Transforming the data to tensors
-    y_train = torch.tensor(outcomes_train['In-hospital_death'].to_numpy()).float()
-    y_val = torch.tensor(outcomes_validate['In-hospital_death'].to_numpy()).float()
-    y_train_val = torch.cat([y_train, y_val])
-    y_test = torch.tensor(outcomes_test['In-hospital_death'].to_numpy()).float()
+    tensors_train, targets_train = convert_df_to_tensors(data_train, outcomes_train)
+    tensors_val, targets_val = convert_df_to_tensors(data_validate, outcomes_validate)
+    tensors_test, targets_test = convert_df_to_tensors(data_test, outcomes_test)
     
-    tensors_train = convert_df_to_tensors(data_train)
-    tensors_val = convert_df_to_tensors(data_validate)
-    tensors_test = convert_df_to_tensors(data_test)
+    y_train = torch.stack(targets_train)
+    y_val = torch.stack(targets_val)
+    y_test = torch.stack(targets_test)
     
     # Creating the pre-trained Chronos pipeline
     model_type = 'tiny'
     pipeline = BaseChronosPipeline.from_pretrained(
         f"amazon/chronos-t5-{model_type}", 
-        device_map=device,  # use "cpu" for CPU inference,
+        device_map=device,
         torch_dtype=torch.float32)
     
     # Getting the embeddings of the data with the pipeline
@@ -278,18 +284,14 @@ def main():
     embeddings_test = []
     for tensor in tqdm(tensors_test):
         embeddings_test.append(pipeline.embed(tensor)[0].mean(axis=-1))
-    
-    embeddings_train_val = embeddings_train + embeddings_val
-    
+        
     # Transforming the embeddings to tensors for the models
     X_train = torch.stack(embeddings_train).mean(axis=-1)
     X_val = torch.stack(embeddings_val).mean(axis=-1)
-    X_train_val = torch.stack(embeddings_train_val).mean(axis=-1)
     X_test = torch.stack(embeddings_test).mean(axis=-1)
 
     X_train2 = torch.stack(embeddings_train)
     X_val2 = torch.stack(embeddings_val)
-    X_train_val2 = torch.stack(embeddings_train_val)
     X_test2 = torch.stack(embeddings_test)
     
     # Creating the models and definig the criterion
@@ -298,8 +300,8 @@ def main():
     criterion = nn.BCEWithLogitsLoss(pos_weight=(y_train.shape[0] - y_train.sum()) / y_train.sum())
     
     # Training the models on the train and validation sets
-    trained_model, _ = train_model(model, criterion, X_train_val, y_train_val, X_val, y_val, initial_parameter=None, num_epochs=int(2e5))
-    trained_model2, _ = train_model(model2, criterion, X_train_val2, y_train_val, X_val2, y_val, initial_parameter=None, num_epochs=1500)
+    trained_model, _ = train_model(model, criterion, X_train, y_train, X_val, y_val, initial_parameter=None, num_epochs=int(3e5))
+    trained_model2, _ = train_model(model2, criterion, X_train2, y_train, X_val2, y_val, initial_parameter=None, num_epochs=1500)
     
     # Saving the trained models
     torch.save(trained_model, './trained_models/chronos_mean.pth')
