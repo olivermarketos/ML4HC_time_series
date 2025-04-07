@@ -6,7 +6,7 @@
 1.1. 
 To preprocess the raw data, run process_data.py
 
-1.2 For some data vizualisation, run data_viipynb
+1.2 For some data vizualisation, run data_viz.ipynb
 
 1.3 For forward filling followed by median filling in the preprocessed data files from 1.1 run fill_nan.ipynb
 
