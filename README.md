@@ -38,6 +38,7 @@ To preprocess the raw data, run process_data.py
 
 ## Question 2
 
+#### Classic ML Models
 2.1.1. 
 To compute the 41 features vectors, run Q2_1_1_features.ipynb
 To train and evaluate the models on the 41 features vectors, run Q2_1_1_models.ipynb
@@ -55,9 +56,12 @@ The most important features of the random forest model trained on the 189 featur
 The tsfresh features were not used because too complex for the LLM
 )
 
-2.2
+#### 2.2 Recurrent Neural Networks
 To create the trained model and the according metrics, run the Q2_2.py file.
 The Q2_2.ipynb file has the same content.
+
+
+#### 2.3 Transformers
 
 ## Question 3
 Q3_Representation_learning.ipynb contains all the code needed to answer this section. It makes use of addtional scripts `Transformers.py` and `helper_funcs.py`
