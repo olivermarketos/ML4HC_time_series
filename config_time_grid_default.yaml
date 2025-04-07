@@ -1,0 +1,34 @@
+"model_type": "tuple"  # Choose 'time_grid' or 'tuple'
+"scaler_name": "MinMaxScaler" # Name of the scaler used
+
+seed: 42
+"device": "cpu" # Change to "cuda" if using GPU
+epochs: 30 # Adjust as needed
+batch_size: 32
+learning_rate: 0.0001
+weight_decay: 0.00001
+patience: 7 # For early stopping based on validation performance
+
+# Paths (MODIFY THESE)
+"data_dir": "data" # Directory containing train/val/test data
+"output_dir": "data/model_outputs/tuning" # Directory to save models and results
+
+# Model Specific Hyperparameters (adjust based on model_type and tuning)
+# Grid Transformer
+grid_d_model: 128
+grid_nhead: 4
+grid_num_layers: 2
+grid_dropout: 0.2
+grid_feature_dim: 41 # Should match your data
+
+# Tuple Transformer
+tuple_d_model: 128
+tuple_nhead: 4
+tuple_num_encoder_layers: 2
+tuple_dim_feedforward: 256 # Typically 2-4x d_model
+tuple_dropout: 0.2
+tuple_num_modalities: 41 # 40 variables + 1 for padding (if PAD_INDEX_Z=0) Adjust if needed!
+PAD_INDEX_Z: 0 # Padding index for time and value features
+tuple_modality_emb_dim: 64
+tuple_max_seq_len: 768 # From transformers.py or defined here
+  
