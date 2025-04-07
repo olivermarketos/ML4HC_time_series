@@ -71,3 +71,7 @@ To evaluate these predictions, run Q4_1.ipynb
 To generate the LLM embeddings of the training and test set, run Q4_emb_a_c.ipynb
 To train on these LLM embeddings and evaluate logistic regression model, and also to generate t-sne on these LLM embeddings , run Q4_2_2.ipynb
 
+4.3
+To create the trained model and the according metrics, run the Q4_3.py file.
+The Q4_3.ipynb file has the same content.
+
