@@ -252,6 +252,7 @@ def main():
     # Transforming the data to tensors
     y_train = torch.tensor(outcomes_train['In-hospital_death'].to_numpy()).float()
     y_val = torch.tensor(outcomes_validate['In-hospital_death'].to_numpy()).float()
+    y_train_val = torch.cat([y_train, y_val])
     y_test = torch.tensor(outcomes_test['In-hospital_death'].to_numpy()).float()
     
     tensors_train = convert_df_to_tensors(data_train)
@@ -278,13 +279,17 @@ def main():
     for tensor in tqdm(tensors_test):
         embeddings_test.append(pipeline.embed(tensor)[0].mean(axis=-1))
     
+    embeddings_train_val = embeddings_train + embeddings_val
+    
     # Transforming the embeddings to tensors for the models
     X_train = torch.stack(embeddings_train).mean(axis=-1)
     X_val = torch.stack(embeddings_val).mean(axis=-1)
+    X_train_val = torch.stack(embeddings_train_val).mean(axis=-1)
     X_test = torch.stack(embeddings_test).mean(axis=-1)
 
     X_train2 = torch.stack(embeddings_train)
     X_val2 = torch.stack(embeddings_val)
+    X_train_val2 = torch.stack(embeddings_train_val)
     X_test2 = torch.stack(embeddings_test)
     
     # Creating the models and definig the criterion
@@ -293,8 +298,8 @@ def main():
     criterion = nn.BCEWithLogitsLoss(pos_weight=(y_train.shape[0] - y_train.sum()) / y_train.sum())
     
     # Training the models on the train and validation sets
-    trained_model, metrics = train_model(model, criterion, X_train, y_train, X_val, y_val, initial_parameter=None, num_epochs=int(1.5e5))
-    trained_model2, metrics = train_model(model2, criterion, X_train2, y_train, X_val2, y_val, initial_parameter=None, num_epochs=1000)
+    trained_model, _ = train_model(model, criterion, X_train_val, y_train_val, X_val, y_val, initial_parameter=None, num_epochs=int(2e5))
+    trained_model2, _ = train_model(model2, criterion, X_train_val2, y_train_val, X_val2, y_val, initial_parameter=None, num_epochs=1500)
     
     # Saving the trained models
     torch.save(trained_model, './trained_models/chronos_mean.pth')

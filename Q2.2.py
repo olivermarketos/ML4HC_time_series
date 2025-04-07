@@ -89,11 +89,13 @@ class Classifier(nn.Module):
             Tensor: Output logits of shape (batch_size, 1).
         """
         x, _ = self.lstm(x)  # Run input through LSTM
-        x = x[:, -1, :]      # Take output from the last time step
 
         if self.bidirectional:
             # If bidirectional, average across hidden units and reshape to (batch_size, 1)
-            x = x.mean(axis=1).reshape(4000, 1)
+            x = (x[:, 0, -1] + x[:, -1, 0]) / 2
+            x = x.reshape(x.shape[0], 1)
+        else:
+            x = x[:, -1, :]      # Take output from the last time step
 
         return self.classifier(x)  # Pass through final linear layer
 
@@ -255,6 +257,7 @@ def main():
     data_test_scaled[data_test_scaled.columns.drop(['RecordID', 'Time'])] = scaler.fit_transform(data_test[data_test.columns.drop(['RecordID', 'Time']).values])
     
     # Creating tensors from the data for the network
+    X_train_val, y_train_val = convert_data_to_tensor(pd.concat([data_test_scaled, data_val_scaled]), pd.concat([outcomes_test, outcomes_validate]), device)
     X_train, y_train = convert_data_to_tensor(data_train_scaled, outcomes_train, device)
     X_val, y_val = convert_data_to_tensor(data_val_scaled, outcomes_validate, device)
     X_test, y_test = convert_data_to_tensor(data_test_scaled, outcomes_test, device)
@@ -263,7 +266,6 @@ def main():
     input_size = 41
     hidden_size = 1
     initial_parameter =.1
-    num_epochs = 1000
     
     # Creating the model and the loss function
     model = Classifier(input_size, hidden_size).to(device)
@@ -271,8 +273,8 @@ def main():
     criterion = nn.BCEWithLogitsLoss(pos_weight=(y_train.shape[0] - y_train.sum()) / y_train.sum())
     
     # Training the models
-    trained_model, metrics = train_model(model, criterion, X_train, y_train, X_val, y_val, initial_parameter, num_epochs)
-    trained_model_bi, metrics_bi = train_model(model_bi, criterion, X_train, y_train, X_val, y_val, initial_parameter, num_epochs)
+    trained_model, _ = train_model(model, criterion, X_train_val, y_train_val, X_val, y_val, initial_parameter, 1500)
+    trained_model_bi, _ = train_model(model_bi, criterion, X_train_val, y_train_val, X_val, y_val, initial_parameter, 2000)
     
     # Saving the models
     torch.save(trained_model, './trained_models/lstm_unidirectional.pth')
