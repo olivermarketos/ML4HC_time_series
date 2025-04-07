@@ -54,6 +54,10 @@ The most important features of the random forest model trained on the 189 featur
 The tsfresh features were not used because too complex for the LLM
 )
 
+2.2
+To create the trained model and the according metrics, run the Q2_2.py file.
+The Q2_2.ipynb file has the same content.
+
 ## Question 3
 
 ## Question 4
