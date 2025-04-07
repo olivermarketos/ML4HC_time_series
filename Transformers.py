@@ -49,29 +49,42 @@ class MedicalTimeSeriesDatasetTuple(Dataset):
 
         return t_seq, z_seq, v_seq, torch.tensor(label, dtype=torch.float32)
 
-def collate_fn(batch):
-    # Unzip the batch
-    t_seqs, z_seqs, v_seqs, labels_list = zip(*batch)
+class ContrastiveMedicalTimeSeriesGridDataset(Dataset):
+    def __init__(self, X, augmentation_func):
+        """
+        Args:
+            X (numpy.ndarray or torch.Tensor): The input data array of shape (num_samples, seq_len, features).
+            augmentation_func (callable): A function that takes a tensor of shape (seq_len, features)
+                                          and returns an augmented tensor of the same shape.
+        """
+        # Ensure X is a tensor
+        if isinstance(X, np.ndarray):
+            self.X = torch.tensor(X, dtype=torch.float32)
+        else:
+            self.X = X.float() # Assuming X might already be a tensor
 
-    # Pad sequences to the maximum length in the batch
-    t_seqs_padded = nn.utils.rnn.pad_sequence(list(t_seqs), batch_first=True, padding_value=PAD_VALUE)
-    z_seqs_padded = nn.utils.rnn.pad_sequence(list(z_seqs), batch_first=True, padding_value=PAD_INDEX_Z)
-    v_seqs_padded = nn.utils.rnn.pad_sequence(list(v_seqs), batch_first=True, padding_value=PAD_VALUE)
+        self.augmentation_func = augmentation_func
+        
+        # --- Pre-computation Check (Optional but Recommended) ---
+        # Check if dimensions match expectations (e.g., seq_len=49, features=41)
+        if len(self.X.shape) != 3:
+            raise ValueError(f"Input data X must have 3 dimensions (samples, seq_len, features), but got shape {self.X.shape}")
+        print(f"Initialized Contrastive Grid Dataset with data shape: {self.X.shape}")
+        # Example check: if self.X.shape[1] != 49 or self.X.shape[2] != 41:
+        #    warnings.warn("Input data shape doesn't match expected (49, 41)")
 
 
-    # Calculate the mask directly in the format expected by TransformerEncoder: True = IGNORE
-    # A position is ignored IF it's a padding index  
-    attn_mask = (z_seqs_padded == PAD_INDEX_Z)
+    def __len__(self):
+        return len(self.X)
 
-    labels = torch.stack(labels_list) # Stack labels to form a tensor
-    
-    if labels.ndim == 1: # Check if it's indeed [B]
-        labels = labels.unsqueeze(-1)
+    def __getitem__(self, idx):
+        original_sample = self.X[idx] # Shape: (seq_len, features) e.g., (49, 41)
 
-    # Ensure float type for loss calculation later
-    labels = labels.float()
-    return t_seqs_padded, z_seqs_padded, v_seqs_padded, attn_mask, labels
+        # Create two independent augmentations (views)
+        view1 = self.augmentation_func(original_sample)
+        view2 = self.augmentation_func(original_sample)
 
+        return view1, view2
 
 class ContrastiveMedicalTimeSeriesDatasetTuple(Dataset):
 
@@ -105,6 +118,109 @@ class ContrastiveMedicalTimeSeriesDatasetTuple(Dataset):
 
         return (t_seq1, z_seq1, v_seq1), (t_seq2, z_seq2, v_seq2), torch.tensor(label, dtype=torch.float32)       
 
+def gaussian_noise(x, std=0.05):
+    """Adds Gaussian noise to the tensor."""
+    noise = torch.randn_like(x) * std
+    return x + noise
+
+def time_masking(x, max_mask_len_ratio=0.2, mask_value=0.0):
+    """Randomly masks a contiguous block of time steps."""
+    seq_len = x.shape[0]
+    mask_len = random.randint(1, int(seq_len * max_mask_len_ratio))
+    mask_start = random.randint(0, seq_len - mask_len)
+    
+    x_aug = x.clone()
+    x_aug[mask_start : mask_start + mask_len, :] = mask_value
+    return x_aug
+
+def feature_masking(x, max_mask_len_ratio=0.2, mask_value=0.0):
+    """Randomly masks entire features (columns)."""
+    num_features = x.shape[1]
+    mask_len = random.randint(1, int(num_features * max_mask_len_ratio))
+    # Choose features (columns) to mask
+    masked_features = random.sample(range(num_features), mask_len)
+    
+    x_aug = x.clone()
+    x_aug[:, masked_features] = mask_value
+    return x_aug
+
+def random_permutation(x, segment_len=5):
+    """Randomly permutes segments along the time axis."""
+    seq_len = x.shape[0]
+    num_segments = seq_len // segment_len
+    if num_segments < 2:
+        return x # Not enough segments to permute
+
+    indices = list(range(num_segments))
+    random.shuffle(indices)
+    
+    x_aug = x.clone()
+    original_segments = [x[i*segment_len : (i+1)*segment_len, :] for i in range(num_segments)]
+    
+    # Handle leftover part if seq_len is not divisible by segment_len
+    leftover_len = seq_len % segment_len
+    leftover_segment = x[num_segments*segment_len:, :] if leftover_len > 0 else None
+
+    # Reconstruct based on shuffled indices
+    current_pos = 0
+    for i in indices:
+        segment = original_segments[i]
+        x_aug[current_pos : current_pos + segment_len, :] = segment
+        current_pos += segment_len
+        
+    # Add back leftover part
+    if leftover_segment is not None:
+         x_aug[current_pos:, :] = leftover_segment
+         
+    return x_aug
+
+# --- Composite Augmentation Function ---
+# You can create a function that randomly applies one or more augmentations
+
+def apply_grid_augmentations(x):
+    """Applies a randomly chosen augmentation or sequence."""
+    # Option 1: Choose one augmentation randomly
+    # aug_choice = random.choice(['noise', 'time_mask', 'feature_mask', 'permute'])
+    # if aug_choice == 'noise':
+    #     return gaussian_noise(x)
+    # elif aug_choice == 'time_mask':
+    #     return time_masking(x)
+    # elif aug_choice == 'feature_mask':
+    #     return feature_masking(x)
+    # elif aug_choice == 'permute':
+    #     return random_permutation(x)
+
+    # Option 2: Apply a sequence (e.g., noise then time masking)
+    x_aug = gaussian_noise(x, std=0.02) # Apply mild noise first
+    x_aug = time_masking(x_aug, max_mask_len_ratio=0.15) # Then mask time steps
+    # x_aug = feature_masking(x_aug, max_mask_len_ratio=0.1) # Optionally mask features
+    
+    return x_aug
+
+
+def collate_fn(batch):
+    # Unzip the batch
+    t_seqs, z_seqs, v_seqs, labels_list = zip(*batch)
+
+    # Pad sequences to the maximum length in the batch
+    t_seqs_padded = nn.utils.rnn.pad_sequence(list(t_seqs), batch_first=True, padding_value=PAD_VALUE)
+    z_seqs_padded = nn.utils.rnn.pad_sequence(list(z_seqs), batch_first=True, padding_value=PAD_INDEX_Z)
+    v_seqs_padded = nn.utils.rnn.pad_sequence(list(v_seqs), batch_first=True, padding_value=PAD_VALUE)
+
+
+    # Calculate the mask directly in the format expected by TransformerEncoder: True = IGNORE
+    # A position is ignored IF it's a padding index  
+    attn_mask = (z_seqs_padded == PAD_INDEX_Z)
+
+    labels = torch.stack(labels_list) # Stack labels to form a tensor
+    
+    if labels.ndim == 1: # Check if it's indeed [B]
+        labels = labels.unsqueeze(-1)
+
+    # Ensure float type for loss calculation later
+    labels = labels.float()
+    return t_seqs_padded, z_seqs_padded, v_seqs_padded, attn_mask, labels
+
 def augment_triplet(triplets, time_shift_max = 0.05, jitter_std = 0.01, dropout_prob = 0.1):
 
     augmented = []
@@ -120,7 +236,26 @@ def augment_triplet(triplets, time_shift_max = 0.05, jitter_std = 0.01, dropout_
 
         augmented.append((t_aug, z, v_aug))
     return augmented
-                 
+
+
+def contrastive_grid_collate_fn(batch):
+    """
+    Collates batches for contrastive learning with grid data (fixed dimensions).
+    Args:
+        batch: A list of tuples, where each tuple is (view1, view2).
+               view1 and view2 are tensors of shape (seq_len, features).
+    Returns:
+        A tuple (views1_batch, views2_batch), where each element is a tensor
+        of shape (batch_size, seq_len, features).
+    """
+    view1_list, view2_list = zip(*batch)
+
+    # Stack the tensors along the batch dimension
+    views1_batch = torch.stack(view1_list, dim=0)
+    views2_batch = torch.stack(view2_list, dim=0)
+
+    return views1_batch, views2_batch
+       
 def contrastive_collate_fn(batch):
     view1, view2, labels_list = zip(*batch)
     # Unzip the views
@@ -230,17 +365,20 @@ class TimeSeriesGridTransformer(nn.Module):
             nn.Linear(64, 1)
             )
         
-    def forward(self, x):
+    def get_representation(self, x):
         x = self.input_proj(x)
         x = self.pos_encoder(x)
-        x = self.transformer_encoder(x)
-      
+        x = self.transformer_encoder(x)      
         x = x[:,-1, :] # last time step
+        return x
 
-        x = self.classifier(x)
+    def forward(self, x):
+        rep = self.get_representation(x)
+       
+
+        x = self.classifier(rep)
         return x
     
-
 class TimeSeriesTupleTransformer(nn.Module):
     def __init__(self, num_modalities, d_model, nhead, num_encoder_layers,
                  dim_feedforward, num_classes, dropout=0.1, max_seq_len=768, modality_emb_dim=64):
@@ -340,10 +478,6 @@ class TimeSeriesTupleTransformer(nn.Module):
         logits = self.classifier(rep)      
         
         return logits
-
-
-
-
 
 class ProjectionHead(nn.Module):
     def __init__(self, input_dim, proj_dim):

@@ -13,7 +13,7 @@ import time
 import random
 from tqdm import tqdm
 import os
-from Transformers import MedicalTimeSeriesDatasetTimeGrid,MedicalTimeSeriesDatasetTuple, collate_fn, TimeSeriesGridTransformer, TimeSeriesTupleTransformer, ContrastiveMedicalTimeSeriesDatasetTuple, augment_triplet, contrastive_collate_fn
+from Transformers import MedicalTimeSeriesDatasetTimeGrid,MedicalTimeSeriesDatasetTuple, collate_fn, TimeSeriesGridTransformer, TimeSeriesTupleTransformer, ContrastiveMedicalTimeSeriesDatasetTuple, augment_triplet, contrastive_collate_fn, ContrastiveMedicalTimeSeriesGridDataset, contrastive_grid_collate_fn, apply_grid_augmentations
 
 
 
@@ -29,6 +29,8 @@ def get_data_loaders(config):
 
     if config["model_type"] == "time_grid":
         data_format = config["model_type"]
+    elif config["model_type"] == "contrast_grid" or config["model_type"] == "grid_linear_probe":
+        data_format = "time_grid"
     elif config["model_type"] == "tuple" or config["model_type"] == "contrast" or config["model_type"] == "linear_probe":
         data_format = "tuple"
     else:
@@ -40,7 +42,7 @@ def get_data_loaders(config):
     X_test = np.load(os.path.join(data_path,f"{data_format}_processed_{scaler_name}_set-c.npy"), allow_pickle=True)
 
   
-    if config["model_type"] == "time_grid":
+    if config["model_type"] == "time_grid" or config["model_type"] == "grid_linear_probe":
       # Feature dimension check
         config["grid_feature_dim"] = X_train.shape[2] # Update based on loaded data
         print(f"Grid Data Shapes: Train X: {X_train.shape}, Val X: {X_val.shape}, Test X: {X_test.shape}")
@@ -49,6 +51,20 @@ def get_data_loaders(config):
         val_dataset = MedicalTimeSeriesDatasetTimeGrid(X_val, y_val)
         test_dataset = MedicalTimeSeriesDatasetTimeGrid(X_test, y_test)
         collate_func = None # Default collate for grid data
+
+    elif config["model_type"] == "contrast_grid":
+        contrastive_dataset = ContrastiveMedicalTimeSeriesGridDataset(
+            X=X_train,
+            augmentation_func=apply_grid_augmentations # Use the composite function
+        )
+        contrastive_loader = DataLoader(
+            contrastive_dataset,
+            batch_size=config["batch_size"],
+            shuffle=True,
+            collate_fn=contrastive_grid_collate_fn, # Use the grid collate function
+           
+        )
+        return contrastive_loader, None, None
 
     elif config["model_type"] == "tuple" or config["model_type"] == "linear_probe":
       
@@ -104,7 +120,7 @@ def get_data_loaders(config):
 def get_model(config):
     """Initializes the model based on the specified type."""
     
-    if config["model_type"] == "time_grid":
+    if config["model_type"] == "time_grid" or config["model_type"] == "contrast_grid":
         model = TimeSeriesGridTransformer(
             feature_dim=config["grid_feature_dim"],
             d_model=config["grid_d_model"],
@@ -182,6 +198,24 @@ def train_model(model,
             x = x.to(device)
             y = label.to(device)
             logits = model(x)
+        
+        elif model_type == "grid_linear_probe":
+            model.eval()
+            x, labels = batch
+            x = x.to(device)
+            labels = labels.to(device)
+
+            with torch.no_grad():
+                rep = model.get_representation(x)
+            
+            try:
+                preds = linear_probe(rep)
+            except AttributeError:
+                raise ValueError("Linear probe not initialized or not callable.")
+            
+            loss = criterion(preds, labels)
+            y = labels
+            logits = preds
 
         elif model_type == "linear_probe":
             model.eval()
@@ -255,6 +289,22 @@ def evaluate(model, dataloader, criterion, device, model_type, linear_probe=None
 
                 # Store original labels for metrics
 
+            elif model_type == "grid_linear_probe":
+                model.eval()
+                x, labels = batch
+                x = x.to(device)
+                labels = labels.to(device)
+
+                with torch.no_grad():
+                    rep = model.get_representation(x)
+                
+                try:
+                    logits = linear_probe(rep)
+                except AttributeError:
+                    raise ValueError("Linear probe not initialized or not callable.")
+                
+                y = labels
+                
             elif model_type == "linear_probe":
                 t_seq, z_seq, v_seq, attn_mask, labels = batch
                 t_seq, z_seq, v_seq, attn_mask, labels = t_seq.to(device), z_seq.to(device), v_seq.to(device), attn_mask.to(device), labels.to(device)
