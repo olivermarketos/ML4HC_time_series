@@ -60,7 +60,7 @@ To create the trained model and the according metrics, run the Q2_2.py file.
 The Q2_2.ipynb file has the same content.
 
 ## Question 3
-
+Q3_Representation_learning.ipynb contains all the code needed to answer this section. It makes use of addtional scripts `Transformers.py` and `helper_funcs.py`
 ## Question 4
 
 4.1
