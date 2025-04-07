@@ -1,5 +1,6 @@
 # ML4HC_time_series
 
+Below we provide an outline of the order to run the different jupyter notebooks, which correspond to the different section laid out in the assignmenet brief.
 
 ## Question 1
 
