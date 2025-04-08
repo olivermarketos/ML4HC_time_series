@@ -15,7 +15,7 @@ cd ML4HC_time_series
 Option A: Using Python venv:
 ```
 python3 -m venv .venv
-source .venv/bin/activate  # On Windows use: env\Scripts\activate
+source .venv/bin/activate  # On Windows use: .venv\Scripts\activate
 ```
 Option B: Using Conda (recommended):
 ```
