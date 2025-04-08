@@ -27,6 +27,8 @@ conda activate yourenv
 ```
 pip install -r requirements.txt
 ```
+---
+
 ## Question 1
 
 #### 1.1. Data pre-processing
@@ -37,6 +39,8 @@ For some data vizualisation, run `data_viz.ipynb`
 
 #### 1.3 Impute missing values
 For forward filling followed by median filling in the preprocessed data files from 1.1 run `fill_nan.ipynb`
+
+---
 
 ## Question 2
 
@@ -62,11 +66,19 @@ The tsfresh features were not used because too complex for the LLM
 To create the trained model and the according metrics, run the `Q2_2.py file`.
 The `Q2_2.ipynb` file has the same content.
 
-
 ### 2.3 Transformers
+`Q2_3_data_processing.ipynb` to process the data into format Time-Grid or (Time, Measurement, Value) triplets, to be used for each of the transformer architectures in this section.
+`Q2_3_transformers.ipynb` to train and evaluate either of the transformer architectures. It makes use of addtional scripts `Transformers.py` (transformer architectures, dataset classes etc) and `helper_funcs.py` (data loading, model loading, training, evaluation etc).
+
+ > **note**: this section and section Q3 make use of a config file, loaded at the beginning of the notebook. `config.yaml` provides an example file. It contains the hyperparameters, output directories and which m
+
+---
 
 ## Question 3
 `Q3_Representation_learning.ipynb` contains all the code needed to answer this section. It makes use of addtional scripts `Transformers.py` and `helper_funcs.py`
+
+---
+
 ## Question 4
 
 #### 4.1
