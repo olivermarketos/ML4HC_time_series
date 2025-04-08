@@ -330,10 +330,10 @@ def process_to_time_tuple(df):
 
 
     
-def main(format = "time_grid"):
+def main(data_paths = ["data/set-a", "data/set-b", "data/set-c"], format = "time_grid"):
     # Load the data
 
-    set_paths = ["data/set-a", "data/set-b", "data/set-c"]
+    set_paths = data_paths
     
     for set_path in set_paths:
 
@@ -371,4 +371,5 @@ if __name__ == "__main__":
     
     format = "time_grid" 
     # format = "time_tuple"
-    main(format= format)
+    data_paths = ["data/set-a", "data/set-b", "data/set-c"] # path to patient records data
+    main(data_paths=data_paths, format= format)
