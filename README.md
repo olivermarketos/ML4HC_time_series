@@ -33,7 +33,7 @@ pip install -r requirements.txt
 
 #### 1.1. Data pre-processing
 
-- Ensure that datasets A, B and C are downloaded from the physionet homepage: https://physionet.org/content/challenge-2012/1.0.0/ and placed in the `data` folder
+- Ensure that datasets A, B and C are downloaded from the physionet homepage: https://physionet.org/content/challenge-2012/1.0.0/ and placed in the `data` folder (or directory can be changed at bottom of  `process_data.py`)
 - To preprocess the raw data, run `process_data.py`.
 - By default it will process into a time grid format (used for majority of questions).
 - To change format to that used in Question 3.2b, change the format tag at the bottom of the file to `"time_tuple"`
