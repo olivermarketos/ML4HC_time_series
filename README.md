@@ -39,7 +39,7 @@ pip install -r requirements.txt
 - To change format to that used in Question 3.2b, change the format tag at the bottom of the file to `"time_tuple"`
 
 #### 1.2 Data visualisation and exploration
-For some data vizualisation, run `data_viz.ipynb`
+- For some data vizualisation, run `data_viz.ipynb`
 
 #### 1.3 Impute missing values
 For forward filling followed by median filling in the preprocessed data files from 1.1 run `fill_nan.ipynb`
