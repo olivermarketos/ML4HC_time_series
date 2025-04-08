@@ -30,7 +30,7 @@ pip install -r requirements.txt
 ## Question 1
 
 1.1. 
-To preprocess the raw data, run process_data.py
+To preprocess the raw data, run process_data.py. By default it will process into a time grid format (used for majority of questions). To change format to that used in Question 3.2b, change the format tag at the bottom of the file to `"time_tuple"`
 
 1.2 For some data vizualisation, run data_viz.ipynb
 
