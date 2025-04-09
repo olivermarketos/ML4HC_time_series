@@ -50,36 +50,40 @@ For forward filling followed by median filling in the preprocessed data files fr
 
 ### 2.1 Classic ML Models
 #### 2.1.1. 
-To compute the 41 features vectors, run `Q2_1_1_features.ipynb`
-To train and evaluate the models on the 41 features vectors, run `Q2_1_1_models.ipynb`
+- To compute the 41 features vectors, run `Q2_1_1_features.ipynb`
+- To train and evaluate the models on the 41 features vectors, run `Q2_1_1_models.ipynb`
 
 #### 2.1.2.
-To compute the 348 features vectors,` Q2_1_2_features_ts.ipynb`
-To train and evaluate the models on the 348 features vectors, run `Q2_1_2_models_ts.ipynb`
+- To compute the 348 features vectors,` Q2_1_2_features_ts.ipynb`
+- To train and evaluate the models on the 348 features vectors, run `Q2_1_2_models_ts.ipynb`
 
 (Without tsfresh features, only statistical features (min, max, skew, std, mean)
     
-To compute the 189 features vectors, `Q2_1_2_features.ipynb`
-To train and evaluate the models on the 189 features vectors, run `Q2_1_2_models.ipynb`
+- To compute the 189 features vectors, `Q2_1_2_features.ipynb`
+- To train and evaluate the models on the 189 features vectors, run `Q2_1_2_models.ipynb`
 
 The most important features of the random forest model trained on the 189 features was used to create the textual summary of patients for LLM.
 The tsfresh features were not used because too complex for the LLM
 )
 
 ### 2.2 Recurrent Neural Networks
-To create the trained model and the according metrics, run the `Q2_2.py file`.
-The `Q2_2.ipynb` file has the same content.
+- To create the trained model and the according metrics, run the `Q2_2.py file`.
+- The `Q2_2.ipynb` file has the same content.
 
 ### 2.3 Transformers
-`Q2_3_data_processing.ipynb` to process the data into format Time-Grid or (Time, Measurement, Value) triplets, to be used for each of the transformer architectures in this section.
-`Q2_3_transformers.ipynb` to train and evaluate either of the transformer architectures. It makes use of addtional scripts `Transformers.py` (transformer architectures, dataset classes etc) and `helper_funcs.py` (data loading, model loading, training, evaluation etc).
+- `Q2_3_data_processing.ipynb` to process the data into format Time-Grid or (Time, Measurement, Value) triplets, to be used for each of the transformer architectures in this section.
+- `Q2_3_transformers.ipynb` to train and evaluate either of the transformer architectures. 
+- It makes use of addtional scripts `Transformers.py` (transformer architectures, dataset classes etc) and `helper_funcs.py` (data loading, model loading, training, evaluation etc).
 
- > **note**: this section and section Q3 make use of a config file, loaded at the beginning of the notebook. `config.yaml` provides an example file. It contains the hyperparameters, output directories and which m
+ > **note**: this section and section Q3 make use of a config file, loaded at the beginning of the notebook. `config.yaml` provides an example file. It contains the hyperparameters, output directories etc. It contains the parameters used on our final models.
+ 
+  - When selecting a `model` ensure `model_type` is set to either `'time_grid'` or `'tuple'` for question 2.3a and 2.3b respectively.
 
 ---
 
 ## Question 3
-`Q3_Representation_learning.ipynb` contains all the code needed to answer this section. It makes use of addtional scripts `Transformers.py` and `helper_funcs.py`
+- `Q3_Representation_learning.ipynb` contains all the code needed to answer this section. It makes use of addtional scripts `Transformers.py` and `helper_funcs.py`
+> Ensure  `config.yaml` `model_types` are set to `"contrast_grid"` for the self-supervised model. Further details follow in the notebook.
 
 ---
 
