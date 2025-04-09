@@ -227,10 +227,8 @@ def test_model(model, criterion, X_test, y_test):
 def main():
     # Setting the device to GPU if possible
     device = None
-    if torch.backends.mps.is_available():
-        device = torch.device("mps")
-    else:
-        device = torch.device("cpu")
+    device = "cuda" if torch.cuda.is_available() else "mps" if torch.mps.is_available() else "cpu"
+    device = torch.device(device)   
     
     # Loading the data
     data_train = pd.read_parquet('./data_processed/set-a.parquet')
